@@ -932,7 +932,8 @@ class EnvironmentLoader(QObject):
     
     def __init__(self, api_client: CleverCloudClient, app_id: str, org_id: Optional[str] = None):
         super().__init__()
-        self.api_client = api_client
+        # Store the original client to copy its configuration
+        self.original_api_client = api_client
         self.app_id = app_id
         self.org_id = org_id
         self.logger = logging.getLogger(__name__)
@@ -940,15 +941,31 @@ class EnvironmentLoader(QObject):
     def load_env(self):
         """Load environment variables in thread."""
         import asyncio
+        from clever_desktop.api.client import CleverCloudClient
         
         async def fetch_env():
+            # Create a new API client instance for this thread
+            api_client = None
             try:
-                self.logger.info(f"Loading environment variables for app: {self.app_id}")
-                env_data = await self.api_client.get_application_env(self.app_id, self.org_id)
+                self.logger.info(f"Loading environment variables for app: {self.app_id} with org_id: {self.org_id}")
+                
+                # Create new API client with same auth
+                api_client = CleverCloudClient()
+                # Copy the auth token from the original client
+                if hasattr(self.original_api_client, 'auth') and self.original_api_client.auth.get_api_token():
+                    api_client.auth.api_token = self.original_api_client.auth.get_api_token()
+                
+                env_data = await api_client.get_application_env(self.app_id, self.org_id)
+                self.logger.info(f"Raw API response for env vars: {env_data}")
                 
                 # Convert API format to simple dict
                 env_vars = {}
-                if isinstance(env_data, dict) and 'env' in env_data:
+                if isinstance(env_data, list):
+                    # API returns directly [{"name": "...", "value": "..."}]
+                    for var in env_data:
+                        if isinstance(var, dict) and 'name' in var and 'value' in var:
+                            env_vars[var['name']] = var['value']
+                elif isinstance(env_data, dict) and 'env' in env_data:
                     # API returns {"env": [{"name": "...", "value": "..."}], ...}
                     for var in env_data.get('env', []):
                         if isinstance(var, dict) and 'name' in var and 'value' in var:
@@ -962,12 +979,29 @@ class EnvironmentLoader(QObject):
             except Exception as e:
                 self.logger.error(f"Failed to load environment variables: {e}")
                 raise e
+            finally:
+                # Clean up the API client
+                if api_client:
+                    try:
+                        await api_client.close()
+                    except:
+                        pass
         
         try:
-            env_vars = asyncio.run(fetch_env())
+            # Create a new event loop for this thread
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            
+            env_vars = loop.run_until_complete(fetch_env())
             self.env_loaded.emit(self.app_id, env_vars)
         except Exception as e:
             self.env_error.emit(self.app_id, str(e))
+        finally:
+            # Clean up the event loop
+            try:
+                loop.close()
+            except:
+                pass
 
 
 class ApplicationActionWorker(QObject):
@@ -979,7 +1013,8 @@ class ApplicationActionWorker(QObject):
     
     def __init__(self, api_client: CleverCloudClient, action: str, app_id: str, app_name: str, env_vars: Optional[Dict[str, str]] = None):
         super().__init__()
-        self.api_client = api_client
+        # Store the original client to copy its configuration
+        self.original_api_client = api_client
         self.action = action
         self.app_id = app_id
         self.app_name = app_name
@@ -989,24 +1024,33 @@ class ApplicationActionWorker(QObject):
     def execute_action(self):
         """Execute the application action."""
         import asyncio
+        from clever_desktop.api.client import CleverCloudClient
         
         async def run_action():
+            # Create a new API client instance for this thread
+            api_client = None
             try:
                 self.progress_updated.emit(f"{self.action.capitalize()}ing {self.app_name}...")
                 self.logger.info(f"Executing {self.action} for application {self.app_name} (ID: {self.app_id})")
                 
+                # Create new API client with same auth
+                api_client = CleverCloudClient()
+                # Copy the auth token from the original client
+                if hasattr(self.original_api_client, 'auth') and self.original_api_client.auth.get_api_token():
+                    api_client.auth.api_token = self.original_api_client.auth.get_api_token()
+                
                 if self.action == 'start':
-                    await self.api_client.start_application(self.app_id)
+                    await api_client.start_application(self.app_id)
                     message = f"Application '{self.app_name}' started successfully."
                 elif self.action == 'stop':
-                    await self.api_client.stop_application(self.app_id)
+                    await api_client.stop_application(self.app_id)
                     message = f"Application '{self.app_name}' stopped successfully."
                 elif self.action == 'restart':
-                    await self.api_client.restart_application(self.app_id)
+                    await api_client.restart_application(self.app_id)
                     message = f"Application '{self.app_name}' restarted successfully."
                 elif self.action == 'save_environment':
                     if self.env_vars is not None:
-                        await self.api_client.set_application_env(self.app_id, self.env_vars)
+                        await api_client.set_application_env(self.app_id, self.env_vars)
                         message = f"Environment variables for '{self.app_name}' saved successfully."
                     else:
                         raise ValueError("No environment variables provided for save operation")
@@ -1020,14 +1064,31 @@ class ApplicationActionWorker(QObject):
                 error_msg = f"Failed to {self.action} application '{self.app_name}': {str(e)}"
                 self.logger.error(error_msg)
                 self.action_completed.emit(self.action, self.app_name, False, error_msg)
+            finally:
+                # Clean up the API client
+                if api_client:
+                    try:
+                        await api_client.close()
+                    except:
+                        pass
         
         try:
+            # Create a new event loop for this thread
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            
             # Run the async function in this thread
-            asyncio.run(run_action())
+            loop.run_until_complete(run_action())
         except Exception as e:
             error_msg = f"Thread execution failed for {self.action}: {str(e)}"
             self.logger.error(error_msg)
             self.action_completed.emit(self.action, self.app_name, False, error_msg)
+        finally:
+            # Clean up the event loop
+            try:
+                loop.close()
+            except:
+                pass
 
 
 class ApplicationsPage(QWidget):
@@ -1165,17 +1226,26 @@ class ApplicationsPage(QWidget):
             def load_data(self):
                 """Load applications in thread."""
                 import asyncio
+                from clever_desktop.api.client import CleverCloudClient
                 
                 async def fetch_applications():
+                    # Create a new API client instance for this thread
+                    api_client = None
                     try:
                         self.logger.info(f"Loading applications from API for org: {self.org_id}")
                         
+                        # Create new API client with same auth
+                        api_client = CleverCloudClient()
+                        # Copy the auth token from the original client
+                        if hasattr(self.api_client, 'auth') and self.api_client.auth.get_api_token():
+                            api_client.auth.api_token = self.api_client.auth.get_api_token()
+                        
                         # Get applications from API for current organization
                         if self.org_id:
-                            applications = await self.api_client.get_applications(self.org_id)
+                            applications = await api_client.get_applications(self.org_id)
                         else:
                             # Fallback to all applications if no org selected
-                            applications = await self.api_client.get_applications()
+                            applications = await api_client.get_applications()
                         
                         self.logger.info(f"Loaded {len(applications)} applications from API")
                         return applications
@@ -1183,13 +1253,30 @@ class ApplicationsPage(QWidget):
                     except Exception as e:
                         self.logger.error(f"Failed to load applications: {e}")
                         raise e
+                    finally:
+                        # Clean up the API client
+                        if api_client:
+                            try:
+                                await api_client.close()
+                            except:
+                                pass
                 
                 try:
+                    # Create a new event loop for this thread
+                    loop = asyncio.new_event_loop()
+                    asyncio.set_event_loop(loop)
+                    
                     # Run async code in this thread
-                    applications = asyncio.run(fetch_applications())
+                    applications = loop.run_until_complete(fetch_applications())
                     self.data_loaded.emit(applications)
                 except Exception as e:
                     self.error_occurred.emit(str(e))
+                finally:
+                    # Clean up the event loop
+                    try:
+                        loop.close()
+                    except:
+                        pass
         
         # Show loading
         self.loading_label.setText("Loading applications...")
