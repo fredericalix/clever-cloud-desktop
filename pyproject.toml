@@ -1,0 +1,79 @@
+[build-system]
+requires = ["setuptools>=65.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "clever-desktop"
+version = "0.1.0"
+description = "Modern desktop client for Clever Cloud platform management"
+authors = [{name = "Clever Desktop Team", email = "desktop@clever-cloud.com"}]
+license = {text = "MIT"}
+readme = "README.md"
+requires-python = ">=3.9"
+keywords = ["clever-cloud", "desktop", "gui", "devops", "network-groups"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Software Development :: User Interfaces",
+    "Topic :: System :: Systems Administration",
+]
+
+dependencies = [
+    "PySide6>=6.6.0",
+    "httpx>=0.25.0",
+    "keyring>=24.0.0",
+    "pydantic>=2.5.0",
+    "loguru>=0.7.0",
+    "cryptography>=41.0.0",
+    "GitPython>=3.1.40",
+    "psutil>=5.9.0",
+    "websockets>=12.0",
+    "python-dateutil>=2.8.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.4.0",
+    "pytest-qt>=4.2.0",
+    "black>=23.0.0",
+    "mypy>=1.7.0",
+    "ruff>=0.1.0",
+]
+
+[project.scripts]
+clever-desktop = "clever_desktop.main:main"
+
+[project.urls]
+Homepage = "https://github.com/clevercloud/clever-desktop"
+Repository = "https://github.com/clevercloud/clever-desktop"
+Documentation = "https://docs.clever-cloud.com/desktop"
+"Bug Reports" = "https://github.com/clevercloud/clever-desktop/issues"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.black]
+line-length = 100
+target-version = ['py39']
+
+[tool.mypy]
+python_version = "3.9"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = true
+
+[tool.ruff]
+line-length = 100
+target-version = "py39"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"] 
