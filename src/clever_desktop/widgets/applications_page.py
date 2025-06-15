@@ -395,6 +395,67 @@ class ApplicationDetailsPanel(QWidget):
         """Refresh application logs."""
         if self.current_app:
             self.action_requested.emit('refresh_logs', self.current_app)
+    
+    def set_status_message(self, message: str):
+        """Set a status message in the details panel."""
+        # You could add a status label here if needed
+        # For now, just log it
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.info(f"Application details status: {message}")
+
+
+class ApplicationActionWorker(QObject):
+    """Worker class for application actions that need to run in a separate thread."""
+    
+    # Signals
+    action_completed = Signal(str, str, bool, str)  # action, app_name, success, message
+    progress_updated = Signal(str)  # status message
+    
+    def __init__(self, api_client: CleverCloudClient, action: str, app_id: str, app_name: str):
+        super().__init__()
+        self.api_client = api_client
+        self.action = action
+        self.app_id = app_id
+        self.app_name = app_name
+        self.logger = logging.getLogger(__name__)
+    
+    def execute_action(self):
+        """Execute the application action."""
+        import asyncio
+        
+        async def run_action():
+            try:
+                self.progress_updated.emit(f"{self.action.capitalize()}ing {self.app_name}...")
+                self.logger.info(f"Executing {self.action} for application {self.app_name} (ID: {self.app_id})")
+                
+                if self.action == 'start':
+                    await self.api_client.start_application(self.app_id)
+                    message = f"Application '{self.app_name}' started successfully."
+                elif self.action == 'stop':
+                    await self.api_client.stop_application(self.app_id)
+                    message = f"Application '{self.app_name}' stopped successfully."
+                elif self.action == 'restart':
+                    await self.api_client.restart_application(self.app_id)
+                    message = f"Application '{self.app_name}' restarted successfully."
+                else:
+                    raise ValueError(f"Unknown action: {self.action}")
+                
+                self.logger.info(f"Action {self.action} completed successfully for {self.app_name}")
+                self.action_completed.emit(self.action, self.app_name, True, message)
+                
+            except Exception as e:
+                error_msg = f"Failed to {self.action} application '{self.app_name}': {str(e)}"
+                self.logger.error(error_msg)
+                self.action_completed.emit(self.action, self.app_name, False, error_msg)
+        
+        try:
+            # Run the async function in this thread
+            asyncio.run(run_action())
+        except Exception as e:
+            error_msg = f"Thread execution failed for {self.action}: {str(e)}"
+            self.logger.error(error_msg)
+            self.action_completed.emit(self.action, self.app_name, False, error_msg)
 
 
 class ApplicationsPage(QWidget):
@@ -408,6 +469,9 @@ class ApplicationsPage(QWidget):
         # Data
         self.current_org_id = None  # Will be set when organization is selected
         self.applications = []
+        
+        # Action tracking
+        self.active_actions = {}  # action_id -> thread info
         
         self.setup_ui()
         self.setup_refresh_timer()
@@ -637,18 +701,19 @@ class ApplicationsPage(QWidget):
         QMessageBox.information(self, "Create Application", "Create application dialog will be implemented here.")
     
     def handle_application_action(self, action: str, app_data: Dict[str, Any]):
-        """Handle application actions."""
+        """Handle application actions with proper async execution."""
         app_name = app_data.get('name', 'Unknown')
         app_id = app_data.get('id', '')
         
+        if not app_id:
+            QMessageBox.warning(self, "Error", "Invalid application ID")
+            return
+        
         self.logger.info(f"Action '{action}' requested for application '{app_name}'")
         
-        if action == 'start':
-            self.start_application(app_id, app_name)
-        elif action == 'stop':
-            self.stop_application(app_id, app_name)
-        elif action == 'restart':
-            self.restart_application(app_id, app_name)
+        # Handle actions that require API calls
+        if action in ['start', 'stop', 'restart']:
+            self._execute_application_action(action, app_id, app_name)
         elif action == 'deploy':
             self.deploy_application(app_id, app_name)
         elif action == 'logs':
@@ -660,32 +725,103 @@ class ApplicationsPage(QWidget):
         elif action == 'refresh_logs':
             self.refresh_logs(app_id, app_name)
     
-    async def start_application(self, app_id: str, app_name: str):
-        """Start an application."""
-        try:
-            await self.api_client.start_application(app_id)
-            QMessageBox.information(self, "Success", f"Application '{app_name}' started successfully.")
-            self.refresh_applications()
-        except Exception as e:
-            QMessageBox.critical(self, "Error", f"Failed to start application: {e}")
+    def _execute_application_action(self, action: str, app_id: str, app_name: str):
+        """Execute application action in a separate thread."""
+        # Check if an action is already running for this app
+        action_key = f"{action}_{app_id}"
+        if action_key in self.active_actions:
+            QMessageBox.information(
+                self, 
+                "Action in Progress", 
+                f"An action is already running for '{app_name}'. Please wait."
+            )
+            return
+        
+        # Confirm destructive actions
+        if action in ['stop', 'restart']:
+            reply = QMessageBox.question(
+                self,
+                f"Confirm {action.capitalize()}",
+                f"Are you sure you want to {action} application '{app_name}'?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No
+            )
+            
+            if reply != QMessageBox.StandardButton.Yes:
+                return
+        
+        # Create worker thread
+        thread = QThread()
+        worker = ApplicationActionWorker(self.api_client, action, app_id, app_name)
+        worker.moveToThread(thread)
+        
+        # Connect signals
+        worker.action_completed.connect(self._on_action_completed)
+        worker.progress_updated.connect(self._on_action_progress)
+        thread.started.connect(worker.execute_action)
+        
+        # Store thread info
+        self.active_actions[action_key] = {
+            'thread': thread,
+            'worker': worker,
+            'app_name': app_name,
+            'start_time': QTimer()
+        }
+        
+        # Start the thread
+        thread.start()
+        self.logger.info(f"Started {action} thread for application {app_name}")
     
-    async def stop_application(self, app_id: str, app_name: str):
-        """Stop an application."""
-        try:
-            await self.api_client.stop_application(app_id)
-            QMessageBox.information(self, "Success", f"Application '{app_name}' stopped successfully.")
-            self.refresh_applications()
-        except Exception as e:
-            QMessageBox.critical(self, "Error", f"Failed to stop application: {e}")
+    def _on_action_progress(self, message: str):
+        """Handle action progress updates."""
+        # Update status in details panel if it's showing this app
+        if hasattr(self, 'details_panel') and self.details_panel.current_app:
+            self.details_panel.set_status_message(message)
+        
+        # Could also show in a status bar if we had one
+        self.logger.debug(f"Action progress: {message}")
     
-    async def restart_application(self, app_id: str, app_name: str):
-        """Restart an application."""
-        try:
-            await self.api_client.restart_application(app_id)
-            QMessageBox.information(self, "Success", f"Application '{app_name}' restarted successfully.")
-            self.refresh_applications()
-        except Exception as e:
-            QMessageBox.critical(self, "Error", f"Failed to restart application: {e}")
+    def _on_action_completed(self, action: str, app_name: str, success: bool, message: str):
+        """Handle action completion."""
+        action_key = f"{action}_{app_name}"  # Note: using app_name as approximation
+        
+        # Remove from active actions (find by app_name since we don't have app_id here)
+        to_remove = []
+        for key, info in self.active_actions.items():
+            if info['app_name'] == app_name:
+                to_remove.append(key)
+        
+        for key in to_remove:
+            if key in self.active_actions:
+                thread = self.active_actions[key]['thread']
+                thread.quit()
+                thread.wait()
+                del self.active_actions[key]
+        
+        # Show result to user
+        if success:
+            QMessageBox.information(self, "Success", message)
+            # Refresh applications to show updated state
+            QTimer.singleShot(2000, self.refresh_applications)  # Delay to let API settle
+        else:
+            QMessageBox.critical(self, "Error", message)
+        
+        self.logger.info(f"Action {action} completed for {app_name}: {'Success' if success else 'Failed'}")
+    
+    def start_application(self, app_id: str, app_name: str):
+        """Start an application - deprecated, use handle_application_action instead."""
+        self.logger.warning("Deprecated method start_application called, use handle_application_action")
+        self.handle_application_action('start', {'id': app_id, 'name': app_name})
+    
+    def stop_application(self, app_id: str, app_name: str):
+        """Stop an application - deprecated, use handle_application_action instead."""
+        self.logger.warning("Deprecated method stop_application called, use handle_application_action")
+        self.handle_application_action('stop', {'id': app_id, 'name': app_name})
+    
+    def restart_application(self, app_id: str, app_name: str):
+        """Restart an application - deprecated, use handle_application_action instead."""
+        self.logger.warning("Deprecated method restart_application called, use handle_application_action")
+        self.handle_application_action('restart', {'id': app_id, 'name': app_name})
     
     def deploy_application(self, app_id: str, app_name: str):
         """Deploy an application."""
@@ -725,4 +861,17 @@ class ApplicationsPage(QWidget):
         """Handle page show event."""
         super().showEvent(event)
         # Refresh applications when page is shown
-        self.refresh_applications() 
+        self.refresh_applications()
+    
+    def closeEvent(self, event):
+        """Handle page close event - cleanup active actions."""
+        # Cancel all running actions
+        for action_key, info in self.active_actions.items():
+            thread = info['thread']
+            if thread.isRunning():
+                self.logger.info(f"Terminating action thread: {action_key}")
+                thread.quit()
+                thread.wait(3000)  # Wait up to 3 seconds
+        
+        self.active_actions.clear()
+        super().closeEvent(event) 
