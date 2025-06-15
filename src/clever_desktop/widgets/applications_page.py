@@ -11,7 +11,8 @@ from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QGridLayout, QLabel, QPushButton,
     QFrame, QScrollArea, QTableWidget, QTableWidgetItem, QHeaderView,
     QComboBox, QLineEdit, QGroupBox, QProgressBar, QMenu, QMessageBox,
-    QSplitter, QTextEdit, QTabWidget
+    QSplitter, QTextEdit, QTabWidget, QDialog, QFormLayout, QCheckBox,
+    QFileDialog, QApplication
 )
 from PySide6.QtCore import Qt, Signal, QTimer, QThread, QObject
 from PySide6.QtGui import QFont, QPalette, QAction, QPixmap
@@ -197,15 +198,447 @@ class ApplicationCard(QFrame):
         """)
 
 
+class EnvironmentVariablesEditor(QWidget):
+    """Environment variables editor with full CRUD operations."""
+    
+    # Signals
+    variables_changed = Signal(dict)  # env_vars
+    save_requested = Signal(dict)     # env_vars
+    
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.current_app_id = None
+        self.current_env_vars = {}
+        self.original_env_vars = {}
+        self.has_changes = False
+        self.logger = logging.getLogger(__name__)
+        self.setup_ui()
+    
+    def setup_ui(self):
+        """Setup the environment variables editor UI."""
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(10, 10, 10, 10)
+        layout.setSpacing(10)
+        
+        # Header with actions
+        header_layout = QHBoxLayout()
+        
+        # Info label
+        self.info_label = QLabel("Environment Variables")
+        self.info_label.setStyleSheet("font-weight: bold; font-size: 14px;")
+        header_layout.addWidget(self.info_label)
+        
+        header_layout.addStretch()
+        
+        # Action buttons
+        self.add_btn = QPushButton("➕ Add Variable")
+        self.add_btn.clicked.connect(self.add_variable)
+        header_layout.addWidget(self.add_btn)
+        
+        self.import_btn = QPushButton("📁 Import")
+        self.import_btn.clicked.connect(self.import_variables)
+        header_layout.addWidget(self.import_btn)
+        
+        self.export_btn = QPushButton("💾 Export")
+        self.export_btn.clicked.connect(self.export_variables)
+        header_layout.addWidget(self.export_btn)
+        
+        layout.addLayout(header_layout)
+        
+        # Environment variables table
+        self.env_table = QTableWidget()
+        self.env_table.setColumnCount(4)
+        self.env_table.setHorizontalHeaderLabels(["Name", "Value", "Masked", "Actions"])
+        
+        # Configure table
+        header = self.env_table.horizontalHeader()
+        header.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)  # Name
+        header.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)           # Value
+        header.setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)  # Masked
+        header.setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)  # Actions
+        
+        self.env_table.setAlternatingRowColors(True)
+        self.env_table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
+        layout.addWidget(self.env_table)
+        
+        # Status and save section
+        status_layout = QHBoxLayout()
+        
+        self.status_label = QLabel("No changes")
+        self.status_label.setStyleSheet("color: #6c757d; font-style: italic;")
+        status_layout.addWidget(self.status_label)
+        
+        status_layout.addStretch()
+        
+        # Save/Cancel buttons
+        self.cancel_btn = QPushButton("Cancel")
+        self.cancel_btn.clicked.connect(self.cancel_changes)
+        self.cancel_btn.setEnabled(False)
+        status_layout.addWidget(self.cancel_btn)
+        
+        self.save_btn = QPushButton("💾 Save Changes")
+        self.save_btn.clicked.connect(self.save_changes)
+        self.save_btn.setEnabled(False)
+        self.save_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #28a745;
+                color: white;
+                border: none;
+                border-radius: 4px;
+                padding: 8px 16px;
+                font-weight: bold;
+            }
+            QPushButton:hover {
+                background-color: #218838;
+            }
+            QPushButton:disabled {
+                background-color: #6c757d;
+            }
+        """)
+        status_layout.addWidget(self.save_btn)
+        
+        layout.addLayout(status_layout)
+        
+        # Initially show empty state
+        self.show_empty_state()
+    
+    def show_empty_state(self):
+        """Show empty state when no application is selected."""
+        self.env_table.setRowCount(1)
+        empty_item = QTableWidgetItem("Select an application to view environment variables")
+        empty_item.setFlags(Qt.ItemFlag.NoItemFlags)
+        empty_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.env_table.setItem(0, 0, empty_item)
+        self.env_table.setSpan(0, 0, 1, 4)
+        
+        # Disable controls
+        self.add_btn.setEnabled(False)
+        self.import_btn.setEnabled(False)
+        self.export_btn.setEnabled(False)
+    
+    def set_application(self, app_id: str, env_vars: Dict[str, str]):
+        """Set the current application and its environment variables."""
+        self.logger.info(f"EnvironmentVariablesEditor.set_application called with app_id={app_id}, env_vars={env_vars}")
+        
+        self.current_app_id = app_id
+        self.current_env_vars = env_vars.copy()
+        self.original_env_vars = env_vars.copy()
+        self.has_changes = False
+        
+        self.update_display()
+        self.update_status()
+        
+        # Enable controls
+        self.add_btn.setEnabled(True)
+        self.import_btn.setEnabled(True)
+        self.export_btn.setEnabled(True)
+        
+        self.logger.info(f"Environment editor set for app {app_id} with {len(env_vars)} variables")
+    
+    def update_display(self):
+        """Update the table display with current environment variables."""
+        self.env_table.setRowCount(len(self.current_env_vars))
+        
+        for row, (name, value) in enumerate(self.current_env_vars.items()):
+            # Name column
+            name_item = QTableWidgetItem(name)
+            name_item.setFlags(Qt.ItemFlag.ItemIsEnabled | Qt.ItemFlag.ItemIsSelectable)
+            self.env_table.setItem(row, 0, name_item)
+            
+            # Value column (editable)
+            value_item = QTableWidgetItem(value)
+            value_item.setFlags(Qt.ItemFlag.ItemIsEnabled | Qt.ItemFlag.ItemIsSelectable | Qt.ItemFlag.ItemIsEditable)
+            self.env_table.setItem(row, 1, value_item)
+            
+            # Masked checkbox
+            mask_checkbox = QCheckBox()
+            mask_checkbox.setChecked(self._is_sensitive_var(name))
+            mask_checkbox.stateChanged.connect(lambda state, r=row: self._on_mask_changed(r, state))
+            self.env_table.setCellWidget(row, 2, mask_checkbox)
+            
+            # Actions column
+            actions_widget = self._create_actions_widget(row, name)
+            self.env_table.setCellWidget(row, 3, actions_widget)
+        
+        # Connect item changed signal
+        self.env_table.itemChanged.connect(self._on_item_changed)
+    
+    def _create_actions_widget(self, row: int, var_name: str) -> QWidget:
+        """Create actions widget for a table row."""
+        widget = QWidget()
+        layout = QHBoxLayout(widget)
+        layout.setContentsMargins(5, 2, 5, 2)
+        layout.setSpacing(5)
+        
+        # Edit button
+        edit_btn = QPushButton("✏️")
+        edit_btn.setToolTip("Edit variable name")
+        edit_btn.setMaximumSize(30, 25)
+        edit_btn.clicked.connect(lambda: self._edit_variable_name(row, var_name))
+        layout.addWidget(edit_btn)
+        
+        # Delete button
+        delete_btn = QPushButton("🗑️")
+        delete_btn.setToolTip("Delete variable")
+        delete_btn.setMaximumSize(30, 25)
+        delete_btn.clicked.connect(lambda: self._delete_variable(row, var_name))
+        layout.addWidget(delete_btn)
+        
+        layout.addStretch()
+        return widget
+    
+    def _is_sensitive_var(self, name: str) -> bool:
+        """Check if a variable name suggests sensitive content."""
+        sensitive_keywords = [
+            'password', 'secret', 'key', 'token', 'auth', 'credential',
+            'private', 'pass', 'pwd', 'api_key', 'access_token'
+        ]
+        name_lower = name.lower()
+        return any(keyword in name_lower for keyword in sensitive_keywords)
+    
+    def _on_mask_changed(self, row: int, state: int):
+        """Handle mask checkbox state change."""
+        value_item = self.env_table.item(row, 1)
+        if value_item:
+            if state == Qt.CheckState.Checked.value:
+                # Mask the value
+                value_item.setText("••••••••")
+                value_item.setFlags(Qt.ItemFlag.ItemIsEnabled | Qt.ItemFlag.ItemIsSelectable)
+            else:
+                # Unmask the value
+                name_item = self.env_table.item(row, 0)
+                if name_item:
+                    var_name = name_item.text()
+                    actual_value = self.current_env_vars.get(var_name, "")
+                    value_item.setText(actual_value)
+                    value_item.setFlags(Qt.ItemFlag.ItemIsEnabled | Qt.ItemFlag.ItemIsSelectable | Qt.ItemFlag.ItemIsEditable)
+    
+    def _on_item_changed(self, item: QTableWidgetItem):
+        """Handle table item changes."""
+        if item.column() == 1:  # Value column
+            row = item.row()
+            name_item = self.env_table.item(row, 0)
+            if name_item:
+                var_name = name_item.text()
+                new_value = item.text()
+                
+                # Update current env vars
+                self.current_env_vars[var_name] = new_value
+                self._mark_changed()
+    
+    def _edit_variable_name(self, row: int, old_name: str):
+        """Edit a variable name."""
+        from PySide6.QtWidgets import QInputDialog
+        
+        new_name, ok = QInputDialog.getText(
+            self, 
+            "Edit Variable Name", 
+            "Variable name:", 
+            text=old_name
+        )
+        
+        if ok and new_name and new_name != old_name:
+            if new_name in self.current_env_vars:
+                QMessageBox.warning(self, "Error", f"Variable '{new_name}' already exists!")
+                return
+            
+            # Update the variable name
+            value = self.current_env_vars.pop(old_name)
+            self.current_env_vars[new_name] = value
+            
+            # Update display
+            self.update_display()
+            self._mark_changed()
+    
+    def _delete_variable(self, row: int, var_name: str):
+        """Delete a variable."""
+        reply = QMessageBox.question(
+            self,
+            "Delete Variable",
+            f"Are you sure you want to delete the variable '{var_name}'?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No
+        )
+        
+        if reply == QMessageBox.StandardButton.Yes:
+            self.current_env_vars.pop(var_name, None)
+            self.update_display()
+            self._mark_changed()
+    
+    def add_variable(self):
+        """Add a new environment variable."""
+        from PySide6.QtWidgets import QInputDialog
+        
+        name, ok = QInputDialog.getText(self, "Add Variable", "Variable name:")
+        if not ok or not name:
+            return
+        
+        if name in self.current_env_vars:
+            QMessageBox.warning(self, "Error", f"Variable '{name}' already exists!")
+            return
+        
+        value, ok = QInputDialog.getText(self, "Add Variable", f"Value for '{name}':")
+        if ok:
+            self.current_env_vars[name] = value
+            self.update_display()
+            self._mark_changed()
+    
+    def import_variables(self):
+        """Import variables from a file."""
+        file_path, _ = QFileDialog.getOpenFileName(
+            self,
+            "Import Environment Variables",
+            "",
+            "Environment Files (*.env);;JSON Files (*.json);;All Files (*)"
+        )
+        
+        if not file_path:
+            return
+        
+        try:
+            imported_vars = {}
+            
+            if file_path.endswith('.json'):
+                import json
+                with open(file_path, 'r') as f:
+                    imported_vars = json.load(f)
+            else:
+                # Assume .env format
+                with open(file_path, 'r') as f:
+                    for line in f:
+                        line = line.strip()
+                        if line and not line.startswith('#') and '=' in line:
+                            key, value = line.split('=', 1)
+                            imported_vars[key.strip()] = value.strip().strip('"\'')
+            
+            if imported_vars:
+                # Ask about conflicts
+                conflicts = set(imported_vars.keys()) & set(self.current_env_vars.keys())
+                if conflicts:
+                    reply = QMessageBox.question(
+                        self,
+                        "Import Conflicts",
+                        f"The following variables already exist:\n{', '.join(conflicts)}\n\nOverwrite them?",
+                        QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                        QMessageBox.StandardButton.No
+                    )
+                    
+                    if reply != QMessageBox.StandardButton.Yes:
+                        # Remove conflicts from import
+                        for conflict in conflicts:
+                            imported_vars.pop(conflict, None)
+                
+                # Import variables
+                self.current_env_vars.update(imported_vars)
+                self.update_display()
+                self._mark_changed()
+                
+                QMessageBox.information(
+                    self, 
+                    "Import Successful", 
+                    f"Imported {len(imported_vars)} variables."
+                )
+            
+        except Exception as e:
+            QMessageBox.critical(self, "Import Error", f"Failed to import variables:\n{str(e)}")
+    
+    def export_variables(self):
+        """Export variables to a file."""
+        if not self.current_env_vars:
+            QMessageBox.information(self, "Export", "No variables to export.")
+            return
+        
+        file_path, selected_filter = QFileDialog.getSaveFileName(
+            self,
+            "Export Environment Variables",
+            "environment.env",
+            "Environment Files (*.env);;JSON Files (*.json)"
+        )
+        
+        if not file_path:
+            return
+        
+        try:
+            if selected_filter.startswith("JSON"):
+                import json
+                with open(file_path, 'w') as f:
+                    json.dump(self.current_env_vars, f, indent=2)
+            else:
+                # Export as .env format
+                with open(file_path, 'w') as f:
+                    for key, value in self.current_env_vars.items():
+                        f.write(f"{key}={value}\n")
+            
+            QMessageBox.information(
+                self, 
+                "Export Successful", 
+                f"Exported {len(self.current_env_vars)} variables to {file_path}"
+            )
+            
+        except Exception as e:
+            QMessageBox.critical(self, "Export Error", f"Failed to export variables:\n{str(e)}")
+    
+    def _mark_changed(self):
+        """Mark that changes have been made."""
+        self.has_changes = True
+        self.update_status()
+        self.variables_changed.emit(self.current_env_vars)
+    
+    def update_status(self):
+        """Update the status display."""
+        if not self.has_changes:
+            self.status_label.setText("No changes")
+            self.status_label.setStyleSheet("color: #6c757d; font-style: italic;")
+            self.save_btn.setEnabled(False)
+            self.cancel_btn.setEnabled(False)
+        else:
+            changes_count = len(set(self.current_env_vars.items()) - set(self.original_env_vars.items()))
+            self.status_label.setText(f"Unsaved changes ({changes_count} modified)")
+            self.status_label.setStyleSheet("color: #ffc107; font-weight: bold;")
+            self.save_btn.setEnabled(True)
+            self.cancel_btn.setEnabled(True)
+    
+    def save_changes(self):
+        """Save the current changes."""
+        if self.has_changes and self.current_app_id:
+            self.save_requested.emit(self.current_env_vars)
+    
+    def cancel_changes(self):
+        """Cancel changes and revert to original."""
+        if self.has_changes:
+            reply = QMessageBox.question(
+                self,
+                "Cancel Changes",
+                "Are you sure you want to discard all changes?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No
+            )
+            
+            if reply == QMessageBox.StandardButton.Yes:
+                self.current_env_vars = self.original_env_vars.copy()
+                self.has_changes = False
+                self.update_display()
+                self.update_status()
+    
+    def mark_saved(self):
+        """Mark the current state as saved."""
+        self.original_env_vars = self.current_env_vars.copy()
+        self.has_changes = False
+        self.update_status()
+
+
 class ApplicationDetailsPanel(QWidget):
     """Application details panel."""
     
     # Signals
     action_requested = Signal(str, dict)  # action, application_data
     
-    def __init__(self, parent=None):
+    def __init__(self, api_client=None, parent=None):
         super().__init__(parent)
+        self.api_client = api_client
         self.current_app = None
+        self.current_org_id = None
+        self.logger = logging.getLogger(__name__)
         self.setup_ui()
     
     def setup_ui(self):
@@ -313,14 +746,14 @@ class ApplicationDetailsPanel(QWidget):
         layout.addStretch()
     
     def setup_environment_tab(self):
-        """Setup the environment variables tab."""
+        """Setup the environment variables tab with full editor."""
         layout = QVBoxLayout(self.env_tab)
+        layout.setContentsMargins(0, 0, 0, 0)
         
-        # Environment variables display
-        self.env_text = QTextEdit()
-        self.env_text.setReadOnly(True)
-        self.env_text.setPlainText("Environment variables will be displayed here...")
-        layout.addWidget(self.env_text)
+        # Create environment variables editor
+        self.env_editor = EnvironmentVariablesEditor()
+        self.env_editor.save_requested.connect(self._on_env_save_requested)
+        layout.addWidget(self.env_editor)
     
     def setup_logs_tab(self):
         """Setup the logs tab."""
@@ -342,6 +775,12 @@ class ApplicationDetailsPanel(QWidget):
         self.current_app = app_data
         self.update_display()
         self.tabs.show()
+        
+        # Load environment variables for the editor
+        if hasattr(self, 'env_editor'):
+            app_id = app_data.get('id', '')
+            if app_id:
+                self._load_environment_variables(app_id)
     
     def update_display(self):
         """Update the display with current application data."""
@@ -364,7 +803,24 @@ class ApplicationDetailsPanel(QWidget):
         # Format dates if available
         created_at = self.current_app.get('creationDate')
         if created_at:
-            self.info_labels['created_at'].setText(created_at[:10])  # Just date part
+            if isinstance(created_at, int):
+                # Convert Unix timestamp to date string
+                from datetime import datetime
+                try:
+                    # Try as seconds first
+                    if created_at > 1e10:  # If timestamp is too large, it's probably in milliseconds
+                        created_at = created_at / 1000
+                    date_str = datetime.fromtimestamp(created_at).strftime('%Y-%m-%d')
+                    self.info_labels['created_at'].setText(date_str)
+                except (ValueError, OSError):
+                    # If conversion fails, show raw value
+                    self.info_labels['created_at'].setText(str(created_at))
+            elif isinstance(created_at, str):
+                self.info_labels['created_at'].setText(created_at[:10])  # Just date part
+            else:
+                self.info_labels['created_at'].setText('-')
+        else:
+            self.info_labels['created_at'].setText('-')
         
         # Update action buttons based on state
         state = self.current_app.get('state', 'UNKNOWN')
@@ -391,6 +847,15 @@ class ApplicationDetailsPanel(QWidget):
         if self.current_app:
             self.action_requested.emit(action_id, self.current_app)
     
+    def _on_env_save_requested(self, env_vars: Dict[str, str]):
+        """Handle environment variables save request."""
+        if self.current_app:
+            # Emit action to parent to handle the API call
+            self.action_requested.emit('save_environment', {
+                **self.current_app,
+                'env_vars': env_vars
+            })
+    
     def _refresh_logs(self):
         """Refresh application logs."""
         if self.current_app:
@@ -403,6 +868,106 @@ class ApplicationDetailsPanel(QWidget):
         import logging
         logger = logging.getLogger(__name__)
         logger.info(f"Application details status: {message}")
+    
+    def set_organization(self, org_id: str):
+        """Set the current organization ID."""
+        self.current_org_id = org_id
+    
+    def _load_environment_variables(self, app_id: str):
+        """Load environment variables for an application."""
+        if not self.api_client:
+            self.logger.error("No API client available for loading environment variables")
+            return
+            
+        # Create a worker to load environment variables
+        thread = QThread()
+        worker = EnvironmentLoader(self.api_client, app_id, self.current_org_id)
+        worker.moveToThread(thread)
+        
+        # Connect signals
+        worker.env_loaded.connect(self._on_env_loaded)
+        worker.env_error.connect(self._on_env_error)
+        thread.started.connect(worker.load_env)
+        
+        # Start thread
+        thread.start()
+        
+        # Store reference to clean up later
+        self._env_thread = thread
+        self._env_worker = worker
+    
+    def _on_env_loaded(self, app_id: str, env_vars: Dict[str, str]):
+        """Handle successful environment variables loading."""
+        self.logger.info(f"Received {len(env_vars)} environment variables for app {app_id}: {list(env_vars.keys())}")
+        
+        if hasattr(self, 'env_editor'):
+            self.env_editor.set_application(app_id, env_vars)
+        
+        # Cleanup thread
+        if hasattr(self, '_env_thread'):
+            self._env_thread.quit()
+            self._env_thread.wait()
+    
+    def _on_env_error(self, app_id: str, error: str):
+        """Handle environment variables loading error."""
+        # Show placeholder data with error message
+        if hasattr(self, 'env_editor'):
+            placeholder_env = {
+                'ERROR': f'Failed to load environment variables: {error}'
+            }
+            self.env_editor.set_application(app_id, placeholder_env)
+        
+        # Cleanup thread
+        if hasattr(self, '_env_thread'):
+            self._env_thread.quit()
+            self._env_thread.wait()
+
+
+class EnvironmentLoader(QObject):
+    """Worker class for loading environment variables."""
+    
+    # Signals
+    env_loaded = Signal(str, dict)  # app_id, env_vars
+    env_error = Signal(str, str)    # app_id, error
+    
+    def __init__(self, api_client: CleverCloudClient, app_id: str, org_id: Optional[str] = None):
+        super().__init__()
+        self.api_client = api_client
+        self.app_id = app_id
+        self.org_id = org_id
+        self.logger = logging.getLogger(__name__)
+    
+    def load_env(self):
+        """Load environment variables in thread."""
+        import asyncio
+        
+        async def fetch_env():
+            try:
+                self.logger.info(f"Loading environment variables for app: {self.app_id}")
+                env_data = await self.api_client.get_application_env(self.app_id, self.org_id)
+                
+                # Convert API format to simple dict
+                env_vars = {}
+                if isinstance(env_data, dict) and 'env' in env_data:
+                    # API returns {"env": [{"name": "...", "value": "..."}], ...}
+                    for var in env_data.get('env', []):
+                        if isinstance(var, dict) and 'name' in var and 'value' in var:
+                            env_vars[var['name']] = var['value']
+                elif isinstance(env_data, dict):
+                    # API returns simple dict format
+                    env_vars = env_data
+                
+                self.logger.info(f"Loaded {len(env_vars)} environment variables")
+                return env_vars
+            except Exception as e:
+                self.logger.error(f"Failed to load environment variables: {e}")
+                raise e
+        
+        try:
+            env_vars = asyncio.run(fetch_env())
+            self.env_loaded.emit(self.app_id, env_vars)
+        except Exception as e:
+            self.env_error.emit(self.app_id, str(e))
 
 
 class ApplicationActionWorker(QObject):
@@ -412,12 +977,13 @@ class ApplicationActionWorker(QObject):
     action_completed = Signal(str, str, bool, str)  # action, app_name, success, message
     progress_updated = Signal(str)  # status message
     
-    def __init__(self, api_client: CleverCloudClient, action: str, app_id: str, app_name: str):
+    def __init__(self, api_client: CleverCloudClient, action: str, app_id: str, app_name: str, env_vars: Optional[Dict[str, str]] = None):
         super().__init__()
         self.api_client = api_client
         self.action = action
         self.app_id = app_id
         self.app_name = app_name
+        self.env_vars = env_vars
         self.logger = logging.getLogger(__name__)
     
     def execute_action(self):
@@ -438,6 +1004,12 @@ class ApplicationActionWorker(QObject):
                 elif self.action == 'restart':
                     await self.api_client.restart_application(self.app_id)
                     message = f"Application '{self.app_name}' restarted successfully."
+                elif self.action == 'save_environment':
+                    if self.env_vars is not None:
+                        await self.api_client.set_application_env(self.app_id, self.env_vars)
+                        message = f"Environment variables for '{self.app_name}' saved successfully."
+                    else:
+                        raise ValueError("No environment variables provided for save operation")
                 else:
                     raise ValueError(f"Unknown action: {self.action}")
                 
@@ -553,7 +1125,7 @@ class ApplicationsPage(QWidget):
         splitter.addWidget(self.apps_scroll)
         
         # Details panel
-        self.details_panel = ApplicationDetailsPanel()
+        self.details_panel = ApplicationDetailsPanel(api_client=self.api_client)
         self.details_panel.action_requested.connect(self.handle_application_action)
         splitter.addWidget(self.details_panel)
         
@@ -720,6 +1292,8 @@ class ApplicationsPage(QWidget):
             self.view_logs(app_id, app_name)
         elif action == 'environment':
             self.manage_environment(app_id, app_name)
+        elif action == 'save_environment':
+            self.save_environment_variables(app_data)
         elif action == 'delete':
             self.delete_application(app_id, app_name)
         elif action == 'refresh_logs':
@@ -833,7 +1407,96 @@ class ApplicationsPage(QWidget):
     
     def manage_environment(self, app_id: str, app_name: str):
         """Manage environment variables."""
-        QMessageBox.information(self, "Environment", f"Environment manager for '{app_name}' will be implemented here.")
+        # This is now handled by the environment tab in the details panel
+        QMessageBox.information(self, "Environment", f"Use the Environment tab in the details panel to manage variables for '{app_name}'.")
+    
+    def save_environment_variables(self, app_data: Dict[str, Any]):
+        """Save environment variables for an application."""
+        app_id = app_data.get('id', '')
+        app_name = app_data.get('name', 'Unknown')
+        env_vars = app_data.get('env_vars', {})
+        
+        if not app_id:
+            QMessageBox.warning(self, "Error", "Invalid application ID")
+            return
+        
+        self.logger.info(f"Saving environment variables for application {app_name} (ID: {app_id})")
+        
+        # Create worker thread for saving environment variables
+        self._execute_environment_save(app_id, app_name, env_vars)
+    
+    def _execute_environment_save(self, app_id: str, app_name: str, env_vars: Dict[str, str]):
+        """Execute environment variables save in a separate thread."""
+        # Check if an action is already running for this app
+        action_key = f"save_environment_{app_id}"
+        if action_key in self.active_actions:
+            QMessageBox.information(
+                self, 
+                "Save in Progress", 
+                f"Environment variables are already being saved for '{app_name}'. Please wait."
+            )
+            return
+        
+        # Confirm save action
+        reply = QMessageBox.question(
+            self,
+            "Save Environment Variables",
+            f"Save {len(env_vars)} environment variables for '{app_name}'?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.Yes
+        )
+        
+        if reply != QMessageBox.StandardButton.Yes:
+            return
+        
+        # Create worker thread
+        thread = QThread()
+        worker = ApplicationActionWorker(self.api_client, 'save_environment', app_id, app_name, env_vars)
+        worker.moveToThread(thread)
+        
+        # Connect signals
+        worker.action_completed.connect(self._on_environment_save_completed)
+        worker.progress_updated.connect(self._on_action_progress)
+        thread.started.connect(worker.execute_action)
+        
+        # Store thread info
+        self.active_actions[action_key] = {
+            'thread': thread,
+            'worker': worker,
+            'app_name': app_name,
+            'start_time': QTimer()
+        }
+        
+        # Start the thread
+        thread.start()
+        self.logger.info(f"Started environment save thread for application {app_name}")
+    
+    def _on_environment_save_completed(self, action: str, app_name: str, success: bool, message: str):
+        """Handle environment save completion."""
+        # Remove from active actions
+        action_key = f"save_environment_{app_name}"  # Approximation using app_name
+        to_remove = []
+        for key, info in self.active_actions.items():
+            if 'save_environment' in key and info['app_name'] == app_name:
+                to_remove.append(key)
+        
+        for key in to_remove:
+            if key in self.active_actions:
+                thread = self.active_actions[key]['thread']
+                thread.quit()
+                thread.wait()
+                del self.active_actions[key]
+        
+        # Show result to user
+        if success:
+            QMessageBox.information(self, "Success", message)
+            # Mark as saved in the environment editor
+            if hasattr(self.details_panel, 'env_editor'):
+                self.details_panel.env_editor.mark_saved()
+        else:
+            QMessageBox.critical(self, "Error", message)
+        
+        self.logger.info(f"Environment save completed for {app_name}: {'Success' if success else 'Failed'}")
     
     def delete_application(self, app_id: str, app_name: str):
         """Delete an application."""
@@ -854,6 +1517,9 @@ class ApplicationsPage(QWidget):
         """Set the current organization and refresh applications."""
         self.current_org_id = org_id
         self.logger.info(f"Applications page: Organization changed to {org_id}")
+        # Update details panel with new organization
+        if hasattr(self, 'details_panel'):
+            self.details_panel.set_organization(org_id)
         # Refresh applications with new organization
         self.refresh_applications()
     

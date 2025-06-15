@@ -281,9 +281,13 @@ class CleverCloudClient:
         response = await self._make_request("GET", f"/applications/{app_id}/instances")
         return response if isinstance(response, list) else []
     
-    async def get_application_env(self, app_id: str) -> Dict[str, Any]:
+    async def get_application_env(self, app_id: str, org_id: Optional[str] = None) -> Dict[str, Any]:
         """Get application environment variables."""
-        return await self._make_request("GET", f"/applications/{app_id}/env")
+        if org_id:
+            endpoint = f"/organisations/{org_id}/applications/{app_id}/env"
+        else:
+            endpoint = f"/applications/{app_id}/env"
+        return await self._make_request("GET", endpoint)
     
     async def set_application_env(self, app_id: str, env_vars: Dict[str, str]) -> Dict[str, Any]:
         """Set application environment variables."""
