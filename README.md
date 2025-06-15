@@ -1,260 +1,260 @@
 # Clever Cloud Desktop Manager
 
-Une application de bureau moderne pour gérer vos ressources Clever Cloud avec une interface graphique intuitive. Cette application remplace l'utilisation de la CLI en fournissant une expérience utilisateur supérieure pour la gestion des applications, add-ons, et Network Groups.
+A modern desktop application for managing your Clever Cloud resources with an intuitive graphical interface. This application replaces CLI usage by providing a superior user experience for managing applications, add-ons, and Network Groups.
 
 ![Version](https://img.shields.io/badge/version-0.1.0-blue.svg)
 ![Python](https://img.shields.io/badge/python-3.9+-green.svg)
 ![License](https://img.shields.io/badge/license-MIT-orange.svg)
 
-## ✨ Fonctionnalités
+## ✨ Features
 
-### ✅ **Actuellement Disponibles**
-- 🔐 **Authentification sécurisée** avec OAuth 1.0 et stockage keyring
-- 🏢 **Gestion multi-organisations** avec changement d'organisation en temps réel
-- 🚀 **Gestion des applications** - Visualisation, statut, et actions de base
-- 🔌 **Gestion des add-ons** - Création, configuration, et monitoring
-- 📊 **Dashboard intuitif** avec navigation par onglets
-- 🎨 **Interface moderne** avec PySide6
+### ✅ **Currently Available**
+- 🔐 **Secure authentication** with OAuth 1.0 and keyring storage
+- 🏢 **Multi-organization management** with real-time organization switching
+- 🚀 **Application management** - Visualization, status, and basic actions
+- 🔌 **Add-on management** - Creation, configuration, and monitoring
+- 📊 **Intuitive dashboard** with tab navigation
+- 🎨 **Modern interface** with PySide6
 
-### 🚧 **En Développement**
-- ⚙️ Éditeur de variables d'environnement
-- 📋 Visualiseur de logs en temps réel
-- 🌐 Gestion des Network Groups
-- 🔧 Actions avancées (déploiement, scaling)
+### 🚧 **In Development**
+- ⚙️ Environment variables editor
+- 📋 Real-time log viewer
+- 🌐 Network Groups management
+- 🔧 Advanced actions (deployment, scaling)
 
-## 🚀 Installation et Lancement
+## 🚀 Installation and Launch
 
-### Prérequis
-- **Python 3.9+** (testé avec Python 3.12)
+### Prerequisites
+- **Python 3.9+** (tested with Python 3.12)
 - **macOS / Linux / Windows**
-- **Compte Clever Cloud** avec API access
+- **Clever Cloud account** with API access
 
-### 1. Clone du Repository
+### 1. Repository Clone
 ```bash
 git clone https://github.com/clevercloud/clever-desktop.git
 cd clever-desktop
 ```
 
-### 2. Création de l'Environnement Virtuel
+### 2. Virtual Environment Creation
 ```bash
-# Créer l'environnement virtuel
+# Create virtual environment
 python -m venv venv
 
-# Activer l'environnement virtuel
-# Sur macOS/Linux:
+# Activate virtual environment
+# On macOS/Linux:
 source venv/bin/activate
 
-# Sur Windows:
+# On Windows:
 venv\Scripts\activate
 ```
 
-### 3. Installation des Dépendances
+### 3. Dependencies Installation
 ```bash
-# Mise à jour de pip
+# Update pip
 pip install --upgrade pip
 
-# Installation du projet en mode développement
+# Install project in development mode
 pip install -e .
 
-# Ou installation des dépendances uniquement
+# Or install dependencies only
 pip install -r requirements.txt
 ```
 
-### 4. Lancement de l'Application
+### 4. Application Launch
 ```bash
-# Méthode 1: Via le script installé
+# Method 1: Via installed script
 clever-desktop
 
-# Méthode 2: Via le module Python
+# Method 2: Via Python module
 python -m clever_desktop
 
-# Méthode 3: Directement via le fichier main
+# Method 3: Directly via main file
 python src/clever_desktop/main.py
 ```
 
-### 5. Premier Démarrage
-1. **Écran de démarrage** : L'application affiche un splash screen pendant l'initialisation
-2. **Authentification** : Si c'est votre première utilisation, une boîte de dialogue de connexion apparaît
-3. **Connexion Clever Cloud** : Entrez vos identifiants Clever Cloud
-4. **Interface principale** : Une fois authentifié, l'interface principale s'ouvre avec vos organisations
+### 5. First Launch
+1. **Splash screen**: The application displays a splash screen during initialization
+2. **Authentication**: If it's your first use, a login dialog appears
+3. **Clever Cloud connection**: Enter your Clever Cloud credentials
+4. **Main interface**: Once authenticated, the main interface opens with your organizations
 
-## 🏗️ Structure du Projet
+## 🏗️ Project Structure
 
 ```
 clever-desktop/
-├── src/clever_desktop/           # Package principal
+├── src/clever_desktop/           # Main package
 │   ├── __init__.py
-│   ├── __main__.py              # Point d'entrée module
-│   ├── main.py                  # Point d'entrée principal
-│   ├── app.py                   # ApplicationManager (coordinateur)
-│   ├── config.py                # Configuration app
-│   ├── settings.py              # Paramètres utilisateur
-│   ├── logging_config.py        # Configuration logging
-│   ├── api/                     # Client API Clever Cloud
-│   │   ├── client.py           # HTTP client principal
-│   │   ├── auth.py             # Authentification OAuth1
-│   │   ├── oauth1_auth.py      # Flow OAuth1
-│   │   └── token_auth.py       # Gestion tokens
-│   ├── widgets/                 # Interface utilisateur
-│   │   ├── main_window.py      # Fenêtre principale
-│   │   ├── dashboard.py        # Tableau de bord
-│   │   ├── applications_page.py # Gestion applications
-│   │   ├── addons_page.py      # Gestion add-ons
-│   │   ├── login_dialog.py     # Dialogue connexion
-│   │   └── splash_screen.py    # Écran démarrage
-│   └── models/                  # Modèles de données
+│   ├── __main__.py              # Module entry point
+│   ├── main.py                  # Main entry point
+│   ├── app.py                   # ApplicationManager (coordinator)
+│   ├── config.py                # App configuration
+│   ├── settings.py              # User settings
+│   ├── logging_config.py        # Logging configuration
+│   ├── api/                     # Clever Cloud API client
+│   │   ├── client.py           # Main HTTP client
+│   │   ├── auth.py             # OAuth1 authentication
+│   │   ├── oauth1_auth.py      # OAuth1 flow
+│   │   └── token_auth.py       # Token management
+│   ├── widgets/                 # User interface
+│   │   ├── main_window.py      # Main window
+│   │   ├── dashboard.py        # Dashboard
+│   │   ├── applications_page.py # Application management
+│   │   ├── addons_page.py      # Add-on management
+│   │   ├── login_dialog.py     # Login dialog
+│   │   └── splash_screen.py    # Startup screen
+│   └── models/                  # Data models
 │       └── config.py
-├── tests/                       # Tests (à développer)
+├── tests/                       # Tests (to be developed)
 ├── docs/                        # Documentation
-├── pyproject.toml              # Configuration projet
-├── requirements.txt            # Dépendances
-└── README.md                   # Ce fichier
+├── pyproject.toml              # Project configuration
+├── requirements.txt            # Dependencies
+└── README.md                   # This file
 ```
 
-## 🎯 Utilisation
+## 🎯 Usage
 
-### Interface Principale
-- **Sidebar Navigation** : Dashboard, Applications, Add-ons, Network Groups, Logs, Settings
-- **Sélecteur d'Organisation** : Changez d'organisation dans le header
-- **Rafraîchissement** : Bouton refresh pour actualiser les données
-- **System Tray** : L'application reste accessible via la barre système
+### Main Interface
+- **Sidebar Navigation**: Dashboard, Applications, Add-ons, Network Groups, Logs, Settings
+- **Organization Selector**: Switch organizations in the header
+- **Refresh**: Refresh button to update data
+- **System Tray**: Application remains accessible via system tray
 
-### Gestion des Applications
-- **Visualisation** : Liste de vos applications avec statut en temps réel
-- **Actions Rapides** : Start, Stop, Restart via menu contextuel
-- **Détails** : Informations complètes sur chaque application
-- **Filtrage** : Recherche et filtres par statut/runtime
+### Application Management
+- **Visualization**: List of your applications with real-time status
+- **Quick Actions**: Start, Stop, Restart via context menu
+- **Details**: Complete information about each application
+- **Filtering**: Search and filters by status/runtime
 
-### Gestion des Add-ons
-- **Création** : Assistant de création avec sélection provider/plan
-- **Monitoring** : Statut et métriques de vos add-ons
-- **Configuration** : Gestion des paramètres et connexions
+### Add-on Management
+- **Creation**: Creation wizard with provider/plan selection
+- **Monitoring**: Status and metrics of your add-ons
+- **Configuration**: Settings and connection management
 
-## 🔧 Développement
+## 🔧 Development
 
-### Setup Environnement de Développement
+### Development Environment Setup
 ```bash
-# Installation avec dépendances de développement
+# Install with development dependencies
 pip install -e ".[dev]"
 
-# Outils de développement inclus
+# Included development tools
 pytest          # Tests
-pytest-qt       # Tests GUI
-black           # Formatage code
+pytest-qt       # GUI tests
+black           # Code formatting
 mypy            # Type checking
 ruff            # Linting
 ```
 
 ### Tests
 ```bash
-# Lancer les tests
+# Run tests
 pytest
 
-# Test avec couverture
+# Test with coverage
 pytest --cov=clever_desktop
 
-# Test d'intégration API (nécessite authentification)
+# API integration test (requires authentication)
 python test_apps_addons.py
 ```
 
-### Linting et Formatage
+### Linting and Formatting
 ```bash
-# Formatage automatique
+# Automatic formatting
 black src/
 
-# Vérification types
+# Type checking
 mypy src/
 
 # Linting
 ruff check src/
 ```
 
-## 📋 Logs et Debugging
+## 📋 Logs and Debugging
 
-Les logs sont stockés dans :
-- **macOS** : `~/Library/Logs/clever-desktop/`
-- **Linux** : `~/.local/share/clever-desktop/logs/`
-- **Windows** : `%APPDATA%\clever-desktop\logs\`
+Logs are stored in:
+- **macOS**: `~/Library/Logs/clever-desktop/`
+- **Linux**: `~/.local/share/clever-desktop/logs/`
+- **Windows**: `%APPDATA%\clever-desktop\logs\`
 
-Pour activer les logs de debug :
+To enable debug logs:
 ```bash
-# Variable d'environnement
+# Environment variable
 export CLEVER_DESKTOP_LOG_LEVEL=DEBUG
 clever-desktop
 ```
 
 ## 🚨 Troubleshooting
 
-### L'application ne démarre pas
+### Application won't start
 ```bash
-# Vérifier l'installation
+# Check installation
 pip show clever-desktop
 
-# Vérifier les dépendances
+# Check dependencies
 pip check
 
-# Réinstaller
+# Reinstall
 pip uninstall clever-desktop
 pip install -e .
 ```
 
-### Problèmes d'authentification
+### Authentication issues
 ```bash
-# Nettoyer les credentials stockés (macOS)
+# Clear stored credentials (macOS)
 security delete-generic-password -s "clever-desktop" -a "api-token"
 
-# Relancer l'application pour ré-authentifier
+# Restart application to re-authenticate
 clever-desktop
 ```
 
-### Interface ne s'affiche pas
-- Vérifiez que vous n'êtes pas en SSH ou environnement sans GUI
-- Sur Linux, assurez-vous que `$DISPLAY` est configuré
-- Essayez de redémarrer l'application
+### Interface not displaying
+- Check that you're not in SSH or GUI-less environment
+- On Linux, ensure `$DISPLAY` is configured
+- Try restarting the application
 
-### Erreurs API
-- Vérifiez votre connexion Internet
-- Vérifiez que vos credentials Clever Cloud sont valides
-- Consultez les logs pour plus de détails
+### API errors
+- Check your Internet connection
+- Verify your Clever Cloud credentials are valid
+- Check logs for more details
 
-## 🌟 Fonctionnalités Prévues
+## 🌟 Planned Features
 
-### Version 1.0 (Prochaine)
-- ✅ Actions applications complètes (start/stop/restart fonctionnels)
-- ✅ Éditeur variables d'environnement
-- ✅ Wizard création application
-- ✅ Framework de tests
+### Version 1.0 (Next)
+- ✅ Complete application actions (functional start/stop/restart)
+- ✅ Environment variables editor
+- ✅ Application creation wizard
+- ✅ Testing framework
 
 ### Version 1.1
-- 📋 Logs temps réel avec WebSockets
-- 🌐 Gestion Network Groups complète
-- 🔧 Git integration et déploiements
+- 📋 Real-time logs with WebSockets
+- 🌐 Complete Network Groups management
+- 🔧 Git integration and deployments
 
 ### Version 2.0
-- 💰 Monitoring billing et coûts
-- 📊 Métriques et alertes avancées
-- 🔌 Système de plugins
+- 💰 Billing and cost monitoring
+- 📊 Advanced metrics and alerts
+- 🔌 Plugin system
 
-## 🤝 Contribution
+## 🤝 Contributing
 
-Les contributions sont les bienvenues ! Consultez le [guide de contribution](CONTRIBUTING.md) pour plus de détails.
+Contributions are welcome! See the [contribution guide](CONTRIBUTING.md) for more details.
 
-### Roadmap de Développement
-Consultez [todo.md](todo.md) pour le statut détaillé du développement et les prochaines priorités.
+### Development Roadmap
+Check [todo.md](todo.md) for detailed development status and next priorities.
 
-## 📄 Licence
+## 📄 License
 
-Ce projet est sous licence MIT. Voir le fichier [LICENSE](LICENSE) pour plus de détails.
+This project is under MIT License. See the [LICENSE](LICENSE) file for more details.
 
-## 🙏 Remerciements
+## 🙏 Acknowledgments
 
-- **Clever Cloud Team** pour l'API et l'écosystème
-- **Qt/PySide6** pour le framework GUI
-- **Communauté Python** pour les excellentes bibliothèques
+- **Clever Cloud Team** for the API and ecosystem
+- **Qt/PySide6** for the GUI framework
+- **Python Community** for excellent libraries
 
 ---
 
-**Maintenu par l'équipe Clever Desktop**  
-📧 Contact : desktop@clever-cloud.com  
-🐛 Issues : [GitHub Issues](https://github.com/clevercloud/clever-desktop/issues)  
-📖 Documentation : [docs.clever-cloud.com/desktop](https://docs.clever-cloud.com/desktop) 
+**Maintained by the Clever Desktop Team**  
+📧 Contact: desktop@clever-cloud.com  
+🐛 Issues: [GitHub Issues](https://github.com/clevercloud/clever-desktop/issues)  
+📖 Documentation: [docs.clever-cloud.com/desktop](https://docs.clever-cloud.com/desktop) 
