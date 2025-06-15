@@ -253,8 +253,3 @@ This project is under MIT License. See the [LICENSE](LICENSE) file for more deta
 - **Python Community** for excellent libraries
 
 ---
-
-**Maintained by the Clever Desktop Team**  
-📧 Contact: desktop@clever-cloud.com  
-🐛 Issues: [GitHub Issues](https://github.com/clevercloud/clever-desktop/issues)  
-📖 Documentation: [docs.clever-cloud.com/desktop](https://docs.clever-cloud.com/desktop) 
