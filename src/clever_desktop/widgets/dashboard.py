@@ -331,6 +331,7 @@ class MainDashboard(QWidget):
         from .applications_page import ApplicationsPage
         from .dashboard_page import DashboardPage
         from .addons_page import AddonsPage
+        from .network_groups_page import NetworkGroupsPage
         
         # Dashboard page
         self.dashboard_page = DashboardPage(self.api_client)
@@ -344,8 +345,12 @@ class MainDashboard(QWidget):
         self.addons_page = AddonsPage(self.api_client)
         self.content_area.addWidget(self.addons_page)
         
+        # Network Groups page
+        self.network_groups_page = NetworkGroupsPage(self.api_client)
+        self.content_area.addWidget(self.network_groups_page)
+        
         # Placeholder pages for other sections
-        for page_name in ["network", "logs", "billing", "settings"]:
+        for page_name in ["logs", "billing", "settings"]:
             placeholder = self._create_placeholder_page(page_name.title())
             self.content_area.addWidget(placeholder)
         
@@ -392,16 +397,48 @@ class MainDashboard(QWidget):
         """Handle organization change and update all pages."""
         self.logger.info(f"Organization changed to: {org_id}")
         
-        # Update all pages with new organization
-        if hasattr(self, 'dashboard_page'):
-            self.dashboard_page.set_organization(org_id)
-        if hasattr(self, 'applications_page'):
-            self.applications_page.set_organization(org_id)
-        if hasattr(self, 'addons_page'):
-            self.addons_page.set_organization(org_id)
+        # Show loading indicator
+        if hasattr(self, 'status_bar'):
+            self.status_bar.showMessage(f"Switching to organization... Please wait.")
         
-        # Emit signal for external listeners
-        self.organization_changed.emit(org_id)
+        # Update all pages with new organization - check if they exist and have the method
+        # Use QTimer to stagger the updates and avoid overwhelming the system
+        update_queue = []
+        
+        if hasattr(self, 'dashboard_page') and hasattr(self.dashboard_page, 'set_organization'):
+            update_queue.append(('dashboard_page', self.dashboard_page))
+        
+        if hasattr(self, 'applications_page') and hasattr(self.applications_page, 'set_organization'):
+            update_queue.append(('applications_page', self.applications_page))
+        
+        if hasattr(self, 'addons_page') and hasattr(self.addons_page, 'set_organization'):
+            update_queue.append(('addons_page', self.addons_page))
+        
+        if hasattr(self, 'network_groups_page') and hasattr(self.network_groups_page, 'set_organization'):
+            update_queue.append(('network_groups_page', self.network_groups_page))
+        
+        # Process updates with small delays to avoid thread conflicts
+        self._process_organization_updates(update_queue, org_id, 0)
+    
+    def _process_organization_updates(self, update_queue, org_id, index):
+        """Process organization updates with staggered timing."""
+        if index >= len(update_queue):
+            # All updates completed
+            if hasattr(self, 'status_bar'):
+                self.status_bar.showMessage(f"Organization switched successfully", 3000)
+            self.logger.info("All pages updated with new organization")
+            return
+        
+        page_name, page_obj = update_queue[index]
+        
+        try:
+            self.logger.info(f"Updating {page_name} with organization: {org_id}")
+            page_obj.set_organization(org_id)
+        except Exception as e:
+            self.logger.error(f"Error updating {page_name} organization: {e}")
+        
+        # Schedule next update with a small delay (200ms)
+        QTimer.singleShot(200, lambda: self._process_organization_updates(update_queue, org_id, index + 1))
     
     def load_initial_data(self):
         """Load initial dashboard data using QTimer to handle async."""
@@ -425,4 +462,6 @@ class MainDashboard(QWidget):
         if hasattr(self, 'applications_page'):
             self.applications_page.refresh_applications()
         if hasattr(self, 'addons_page'):
-            self.addons_page.refresh_addons() 
+            self.addons_page.refresh_addons()
+        if hasattr(self, 'network_groups_page'):
+            self.network_groups_page.refresh_network_groups() 

@@ -330,12 +330,13 @@ class CleverCloudClient:
     # Network Groups API (v4)
     async def get_network_groups(self, org_id: str) -> List[Dict[str, Any]]:
         """Get Network Groups for organization."""
-        response = await self._make_request("GET", f"/network-groups", api_version="v4", params={"orgaId": org_id})
+        # Use the same endpoint format as the CLI
+        response = await self._make_request("GET", f"/networkgroups/organisations/{org_id}/networkgroups", api_version="v4")
         return response if isinstance(response, list) else []
     
     async def get_network_group(self, ng_id: str) -> Dict[str, Any]:
         """Get Network Group details."""
-        return await self._make_request("GET", f"/network-groups/{ng_id}", api_version="v4")
+        return await self._make_request("GET", f"/networkgroups/{ng_id}", api_version="v4")
     
     async def create_network_group(self, org_id: str, name: str, **kwargs) -> Dict[str, Any]:
         """Create new Network Group."""
@@ -344,11 +345,12 @@ class CleverCloudClient:
             "name": name,
             **kwargs
         }
-        return await self._make_request("POST", "/network-groups", api_version="v4", data=data)
+        return await self._make_request("POST", "/networkgroups", api_version="v4", data=data)
     
     async def get_network_group_members(self, ng_id: str) -> List[Dict[str, Any]]:
         """Get Network Group members."""
-        response = await self._make_request("GET", f"/network-groups/{ng_id}/members", api_version="v4")
+        # Use the correct endpoint format for members
+        response = await self._make_request("GET", f"/networkgroups/{ng_id}/members", api_version="v4")
         return response if isinstance(response, list) else []
     
     async def create_external_peer(
@@ -364,7 +366,7 @@ class CleverCloudClient:
             "wireguardPublicKey": wireguard_public_key,
             **kwargs
         }
-        return await self._make_request("POST", f"/network-groups/{ng_id}/external-peers", api_version="v4", data=data)
+        return await self._make_request("POST", f"/networkgroups/{ng_id}/external-peers", api_version="v4", data=data)
     
     # Logs API
     async def get_application_logs(

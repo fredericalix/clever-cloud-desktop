@@ -870,8 +870,43 @@ class ApplicationDetailsPanel(QWidget):
         logger.info(f"Application details status: {message}")
     
     def set_organization(self, org_id: str):
-        """Set the current organization ID."""
+        """Set the current organization and refresh applications."""
         self.current_org_id = org_id
+        self.logger.info(f"Applications page: Organization changed to {org_id}")
+        
+        # Cancel any running threads first
+        if hasattr(self, 'apps_thread') and self.apps_thread.isRunning():
+            self.logger.info("Cancelling existing applications loading thread")
+            self.apps_thread.quit()
+            self.apps_thread.wait(3000)  # Wait up to 3 seconds
+            if self.apps_thread.isRunning():
+                self.logger.warning("Applications thread did not stop gracefully, terminating")
+                self.apps_thread.terminate()
+                self.apps_thread.wait(1000)
+        
+        # Cancel any running environment loading threads
+        for action_key, info in list(self.active_actions.items()):
+            thread = info['thread']
+            if thread.isRunning():
+                self.logger.info(f"Cancelling action thread: {action_key}")
+                thread.quit()
+                thread.wait(1000)
+                if thread.isRunning():
+                    thread.terminate()
+                    thread.wait(500)
+        self.active_actions.clear()
+        
+        # Update details panel with new organization
+        if hasattr(self, 'details_panel'):
+            self.details_panel.set_organization(org_id)
+            
+        # Only refresh if we have a valid organization
+        if org_id:
+            self.refresh_applications()
+        else:
+            # Clear display if no organization
+            self.applications = []
+            self.update_applications_display()
     
     def _load_environment_variables(self, app_id: str):
         """Load environment variables for an application."""
@@ -1205,9 +1240,13 @@ class ApplicationsPage(QWidget):
         self.refresh_timer.start(60000)  # Refresh every minute
     
     def refresh_applications(self):
-        """Refresh applications list using QTimer to handle async."""
-        # Use QTimer to schedule async data loading
-        QTimer.singleShot(100, self._refresh_applications_async)
+        """Refresh applications list."""
+        if not self.current_org_id:
+            self.logger.warning("Cannot refresh applications: No organization selected")
+            return
+            
+        self.logger.info(f"Refreshing applications for organization: {self.current_org_id}")
+        self._refresh_applications_async()
     
     def _refresh_applications_async(self):
         """Refresh applications using a separate thread."""
@@ -1599,16 +1638,6 @@ class ApplicationsPage(QWidget):
     def refresh_logs(self, app_id: str, app_name: str):
         """Refresh application logs."""
         QMessageBox.information(self, "Refresh Logs", f"Refreshing logs for '{app_name}'...")
-    
-    def set_organization(self, org_id: str):
-        """Set the current organization and refresh applications."""
-        self.current_org_id = org_id
-        self.logger.info(f"Applications page: Organization changed to {org_id}")
-        # Update details panel with new organization
-        if hasattr(self, 'details_panel'):
-            self.details_panel.set_organization(org_id)
-        # Refresh applications with new organization
-        self.refresh_applications()
     
     def showEvent(self, event):
         """Handle page show event."""

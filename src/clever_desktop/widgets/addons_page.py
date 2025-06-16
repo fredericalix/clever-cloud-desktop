@@ -17,7 +17,7 @@ from PySide6.QtWidgets import (
 from PySide6.QtCore import Qt, Signal, QTimer, QSize, QThread, QObject
 from PySide6.QtGui import QFont, QPixmap, QPainter, QColor, QAction, QPalette
 
-from ..api.client import CleverCloudClient
+from clever_desktop.api.client import CleverCloudClient
 
 
 class AddonCard(QFrame):
@@ -634,7 +634,7 @@ class AddonsPage(QWidget):
         QTimer.singleShot(100, self._refresh_addons_async)
     
     def _refresh_addons_async(self):
-        """Refresh add-ons using a separate thread."""
+        """Refresh add-ons asynchronously."""
         
         class AddonsLoader(QObject):
             data_loaded = Signal(list)  # addons
@@ -647,38 +647,50 @@ class AddonsPage(QWidget):
                 self.logger = logger
             
             def load_data(self):
-                """Load add-ons in thread."""
-                import asyncio
-                
-                async def fetch_addons():
-                    try:
-                        self.logger.info(f"Loading add-ons from API for org: {self.org_id}")
+                """Load add-ons data."""
+                try:
+                    async def fetch_addons():
+                        from clever_desktop.api.client import CleverCloudClient
+                        from clever_desktop.api.token_auth import CleverCloudTokenAuth
                         
-                        # Get add-ons from API for current organization
-                        if self.org_id:
-                            addons = await self.api_client.get_addons(self.org_id)
-                        else:
-                            # Fallback to all add-ons if no org selected
-                            addons = await self.api_client.get_addons()
+                        # Create isolated client for this thread
+                        auth_manager = CleverCloudTokenAuth()
+                        client = CleverCloudClient(auth_manager)
+                        
+                        # Copy authentication from main client
+                        if hasattr(self.api_client, 'api_token'):
+                            client.api_token = self.api_client.api_token
+                        
+                        self.logger.info(f"Loading add-ons from API for org: {self.org_id}")
+                        addons = await client.get_addons(self.org_id)
+                        
+                        await client.close()
                         
                         self.logger.info(f"Loaded {len(addons)} add-ons from API")
                         return addons
-                        
-                    except Exception as e:
-                        self.logger.error(f"Failed to load add-ons: {e}")
-                        raise e
-                
-                try:
-                    # Run async code in this thread
-                    addons = asyncio.run(fetch_addons())
-                    self.data_loaded.emit(addons)
+                    
+                    # Create new event loop for this thread
+                    import asyncio
+                    loop = asyncio.new_event_loop()
+                    asyncio.set_event_loop(loop)
+                    try:
+                        # Run async code in this thread
+                        addons = loop.run_until_complete(fetch_addons())
+                        self.data_loaded.emit(addons)
+                    finally:
+                        loop.close()
                 except Exception as e:
                     self.error_occurred.emit(str(e))
         
         # Create thread and loader
         if hasattr(self, 'addons_thread') and self.addons_thread.isRunning():
+            self.logger.info("Stopping existing add-ons thread")
             self.addons_thread.quit()
-            self.addons_thread.wait()
+            self.addons_thread.wait(2000)  # Wait up to 2 seconds
+            if self.addons_thread.isRunning():
+                self.logger.warning("Force terminating add-ons thread")
+                self.addons_thread.terminate()
+                self.addons_thread.wait(1000)
         
         self.addons_thread = QThread()
         self.addons_loader = AddonsLoader(self.api_client, self.current_org_id, self.logger)
@@ -724,6 +736,17 @@ class AddonsPage(QWidget):
         """Set the current organization and refresh add-ons."""
         self.current_org_id = org_id
         self.logger.info(f"Add-ons page: Organization changed to {org_id}")
+        
+        # Cancel any running threads first
+        if hasattr(self, 'addons_thread') and self.addons_thread.isRunning():
+            self.logger.info("Cancelling existing add-ons loading thread")
+            self.addons_thread.quit()
+            self.addons_thread.wait(3000)  # Wait up to 3 seconds
+            if self.addons_thread.isRunning():
+                self.logger.warning("Add-ons thread did not stop gracefully, terminating")
+                self.addons_thread.terminate()
+                self.addons_thread.wait(1000)
+        
         # Refresh add-ons with new organization
         self.refresh_addons()
     
